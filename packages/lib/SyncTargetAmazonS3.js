@@ -4,6 +4,7 @@ const Setting = require('./models/Setting').default;
 const { FileApi } = require('./file-api.js');
 const Synchronizer = require('./Synchronizer').default;
 const { FileApiDriverAmazonS3 } = require('./file-api-driver-amazon-s3.js');
+const AWS = require('aws-sdk');
 const S3 = require('aws-sdk/clients/s3');
 
 class SyncTargetAmazonS3 extends BaseSyncTarget {
@@ -36,33 +37,62 @@ class SyncTargetAmazonS3 extends BaseSyncTarget {
 		return Setting.value('sync.8.path');
 	}
 
-	s3AuthParameters() {
-		return {
-			accessKeyId: Setting.value('sync.8.username'),
-			secretAccessKey: Setting.value('sync.8.password'),
-			s3UseArnRegion: true, // override the request region with the region inferred from requested resource's ARN
+	/**
+	 * Returns appropriate S3 credential object to use.
+	 *
+	 * Explicitly configured access keys will take precedence over a configured
+	 *   AWS shared credential file.
+	 *
+	 * @link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/Credentials.html
+	 * @link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/SharedIniFileCredentials.html
+	 *
+	 * @return {AWS.Credentials} AWS credentials to use.
+	 */
+	static s3Credentials() {
+		const accessKeyId = Setting.value('sync.8.username');
+		const secretAccessKey = Setting.value('sync.8.password');
+		const credentialPath = Setting.value('sync.8.sharedCredentialFile');
+		if ([accessKeyId, secretAccessKey].every((s) => { return s !== ''; })) {
+			// If an access key ID and secret access key specified, use those
+			return new AWS.Credentials(accessKeyId, secretAccessKey);
+		} else if (credentialPath !== '') {
+			// Else use shared credential file if specified
+			return new AWS.SharedIniFileCredentials({
+				profile: Setting.value('sync.8.profile'),
+				filename: credentialPath,
+			});
+		} else {
+			// Else throw exception for invalid credential settings
+			throw new Error('No valid S3 credentials specified.');
+		}
+	}
+
+	/**
+	 * Returns configuration object for the AWS/S3 SDK to use.
+	 *
+	 * @link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/Config.html
+	 * @link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#constructor-property
+	 *
+	 * @returns {AWS.Config} AWS S3 configuration.
+	 */
+	static s3Config() {
+		return new AWS.Config({
+			credentials: SyncTargetAmazonS3.s3Credentials(),
+			s3UseArnRegion: true,
 			s3ForcePathStyle: true,
 			endpoint: Setting.value('sync.8.url'),
-		};
+		});
 	}
 
 	api() {
 		if (this.api_) return this.api_;
 
-		this.api_ = new S3(this.s3AuthParameters());
+		this.api_ = new S3(SyncTargetAmazonS3.s3Config());
 		return this.api_;
 	}
 
-	static async newFileApi_(syncTargetId, options) {
-		const apiOptions = {
-			accessKeyId: options.username(),
-			secretAccessKey: options.password(),
-			s3UseArnRegion: true,
-			s3ForcePathStyle: true,
-			endpoint: options.url(),
-		};
-
-		const api = new S3(apiOptions);
+	static async newFileApi_(syncTargetId, _options) {
+		const api = new S3(SyncTargetAmazonS3.s3Config());
 		const driver = new FileApiDriverAmazonS3(api, SyncTargetAmazonS3.s3BucketName());
 		const fileApi = new FileApi('', driver);
 		fileApi.setSyncTargetId(syncTargetId);

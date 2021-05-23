@@ -449,7 +449,7 @@ class Setting extends BaseModel {
 					return settings['sync.target'] == SyncTargetRegistry.nameToId('amazon_s3');
 				},
 				public: true,
-				label: () => _('AWS key'),
+				label: () => _('AWS Access Key ID'),
 				storage: SettingStorage.File,
 			},
 			'sync.8.password': {
@@ -460,8 +460,37 @@ class Setting extends BaseModel {
 					return settings['sync.target'] == SyncTargetRegistry.nameToId('amazon_s3');
 				},
 				public: true,
-				label: () => _('AWS secret'),
+				label: () => _('AWS Secret Key'),
 				secure: true,
+			},
+			'sync.8.sharedCredentialFile': {
+				value: '',
+				type: SettingItemType.String,
+				section: 'sync',
+				show: (settings: any) => {
+					try {
+						return settings['sync.target'] == SyncTargetRegistry.nameToId('amazon_s3');
+					} catch (error) {
+						return false;
+					}
+				},
+				filter: (value: any) => {
+					return value ? rtrimSlashes(value) : '';
+				},
+				public: true,
+				label: () => _('AWS Shared Credental File Path'),
+				description: () => _('Optionally specify a file path to an AWS Shared Credential file. This setting is overriden if an AWS Key and Secret is specified.'),
+				storage: SettingStorage.File,
+			},
+			'sync.8.profile': {
+				value: 'default',
+				type: SettingItemType.String,
+				section: 'sync',
+				show: (settings: any) => {
+					return settings['sync.target'] == SyncTargetRegistry.nameToId('amazon_s3');
+				},
+				public: true,
+				label: () => _('AWS Shared Credential File Profile'),
 			},
 
 			'sync.9.path': {
